@@ -1,9 +1,9 @@
 import pandas as pd
 #1
 # Load datasets (FIXED)
-books = pd.read_csv("data/Books.csv", sep=";", encoding='latin-1', on_bad_lines='skip')
-users = pd.read_csv("data/Users.csv", sep=";", encoding='latin-1', on_bad_lines='skip')
-ratings = pd.read_csv("data/Ratings.csv", sep=";", encoding='latin-1', on_bad_lines='skip')
+books = pd.read_csv("data/Books.csv", sep=";", encoding='ISO-8859-1', on_bad_lines='skip')
+users = pd.read_csv("data/Users.csv", sep=";", encoding='ISO-8859-1', on_bad_lines='skip')
+ratings = pd.read_csv("data/Ratings.csv", sep=";", encoding='ISO-8859-1', on_bad_lines='skip')
 #2
 # Display first few rows
 #to check if the datasets are loaded correctly and to understand their structure

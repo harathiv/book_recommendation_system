@@ -2,6 +2,11 @@ import random
 import streamlit as st
 from auth import login_user, register_user
 from main import hybrid_recommend, book_titles, user_ids
+import os
+
+os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
+os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
+
 
 st.set_page_config(
     page_title="Book Recommender",

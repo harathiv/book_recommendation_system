@@ -53,8 +53,15 @@ def prepare_model():
     users["age"] = pd.to_numeric(users["age"], errors="coerce")
     users["age"] = users["age"].fillna(users["age"].mean())
 
-    # Merge datasets
+
+    
     ratings_with_books = ratings.merge(books, on="isbn")
+
+    
+    
+    # Merge datasetsprint
+
+
     final_data = ratings_with_books.merge(users, on="user-id")
 
     # Filter users and books

@@ -139,7 +139,7 @@ st.markdown(
 )
 
 # ---------- SIDEBAR ----------
-st.sidebar.markdown('<div class="sidebar-title">✨ Navigation</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="sidebar-title">Navigation</div>', unsafe_allow_html=True)
 menu = ["Login", "Register"]
 choice = st.sidebar.selectbox("Menu", menu)
 
@@ -240,8 +240,8 @@ if "user" in st.session_state:
                     <div class="selected-card">
                         <h3>✅ Selected Book</h3>
                         <p style="font-size:22px; font-weight:700;">📖 {book['title']}</p>
-                        <p style="font-size:18px;">✍️ Author: {book['author']}</p>
-                        <p style="font-size:18px;">⭐ Rating: {book['rating']}</p>
+                        <p style="font-size:18px;">Author: {book['author']}</p>
+                        <p style="font-size:18px;"> Rating: {book['rating']}</p>
                         <p><a href="{url}" target="_blank" style="color:white; font-weight:700;">🔗 View Book Online</a></p>
                     </div>
                     """, unsafe_allow_html=True)

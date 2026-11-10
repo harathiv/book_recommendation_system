@@ -1,8 +1,13 @@
 import pickle
+
 import joblib
 import pandas as pd
 import streamlit as st
-from scipy.sparse import load_npz
+from scipy.sparse import csr_matrix, load_npz, vstack
+from sklearn.neighbors import NearestNeighbors
+
+from auth import get_all_user_ratings
+
 
 @st.cache_resource
 def load_artifacts():
@@ -48,8 +53,8 @@ def load_artifacts():
     vectorizer,
     book_nn,
     book_matrix,
-    user_nn,
-    user_item_sparse,
+    historical_user_nn,
+    historical_user_item_sparse,
     user_ids,
     book_titles_cf,
     books_meta,
@@ -67,7 +72,7 @@ def get_book_info(title):
     return {
         "title": title,
         "author": author,
-        "rating": rating
+        "rating": rating,
     }
 
 
@@ -76,7 +81,6 @@ def recommend(book_name):
         return []
 
     query = book_name.strip().lower()
-
     matches = book_df[book_df["title"].str.lower() == query]
 
     if matches.empty:
@@ -86,8 +90,7 @@ def recommend(book_name):
         return []
 
     idx = matches.index[0]
-
-    distances, indices = book_nn.kneighbors(book_matrix[idx], n_neighbors=6)
+    _, indices = book_nn.kneighbors(book_matrix[idx], n_neighbors=6)
 
     recommendations = []
     for i in indices[0]:
@@ -98,26 +101,76 @@ def recommend(book_name):
     return recommendations[:5]
 
 
-def recommend_cf(user_id):
-    if user_id not in user_ids:
+def _live_user_matrix():
+    """Build live SQLite user rows using the historical artifact column order."""
+    title_to_column = {title: index for index, title in enumerate(book_titles_cf)}
+    live_rows = {}
+
+    for username, title, rating in get_all_user_ratings():
+        column = title_to_column.get(title)
+        if column is None:
+            continue
+        if username not in live_rows:
+            live_rows[username] = {}
+        live_rows[username][column] = float(rating)
+
+    if not live_rows:
+        return None, {}
+
+    rows = []
+    usernames = {}
+    for row_index, (username, ratings) in enumerate(live_rows.items()):
+        row = csr_matrix(
+            (
+                list(ratings.values()),
+                ([0] * len(ratings), list(ratings.keys())),
+            ),
+            shape=(1, len(book_titles_cf)),
+        )
+        rows.append(row)
+        usernames[username] = row_index
+
+    return vstack(rows, format="csr"), usernames
+
+
+def recommend_cf(username=None, user_id=None):
+    live_matrix, live_user_indexes = _live_user_matrix()
+    target_matrix = historical_user_item_sparse
+    target_row = None
+    live_user_count = 0
+
+    if live_matrix is not None:
+        target_matrix = vstack([target_matrix, live_matrix], format="csr")
+        live_user_count = live_matrix.shape[0]
+
+    if username in live_user_indexes:
+        target_row = len(user_ids) + live_user_indexes[username]
+    elif user_id in user_ids:
+        target_row = user_ids.index(user_id)
+
+    if target_row is None:
         return list(popular_df["title"].head(5).values)
 
-    row_idx = user_ids.index(user_id)
+    model = historical_user_nn
+    if live_user_count:
+        model = NearestNeighbors(metric="cosine", algorithm="brute")
+        model.fit(target_matrix)
 
-    distances, indices = user_nn.kneighbors(user_item_sparse[row_idx], n_neighbors=6)
+    neighbor_count = min(6, target_matrix.shape[0])
+    _, indices = model.kneighbors(target_matrix[target_row], n_neighbors=neighbor_count)
 
+    rated_columns = set(target_matrix[target_row].indices)
     recommended_books = []
 
-    for neighbor_idx in indices[0][1:]:
-        neighbor_row = user_item_sparse[neighbor_idx]
-        cols = neighbor_row.indices
-        vals = neighbor_row.data
+    for neighbor_idx in indices[0]:
+        if neighbor_idx == target_row:
+            continue
 
-        for col, val in zip(cols, vals):
-            if val >= 3:
-                recommended_books.append(book_titles_cf[col])
+        neighbor_row = target_matrix[neighbor_idx]
+        for column, rating in zip(neighbor_row.indices, neighbor_row.data):
+            if rating >= 3 and column not in rated_columns:
+                recommended_books.append(book_titles_cf[column])
 
-    # remove duplicates, keep order
     seen = set()
     final = []
     for book in recommended_books:
@@ -125,36 +178,30 @@ def recommend_cf(user_id):
             seen.add(book)
             final.append(book)
 
-    return final[:5]
+    return final[:5] or list(popular_df["title"].head(5).values)
 
 
-def hybrid_recommend(user_id=None, book_name=None):
-    if user_id and book_name:
+def hybrid_recommend(username=None, user_id=None, book_name=None):
+    if (username or user_id) and book_name:
         content_books = recommend(book_name)
-        cf_books = recommend_cf(user_id)
+        cf_books = recommend_cf(username=username, user_id=user_id)
 
         books_list = [book_name]
-        for b in content_books:
-            if b != book_name and b not in books_list:
-                books_list.append(b)
+        for book in content_books + cf_books:
+            if book != book_name and book not in books_list:
+                books_list.append(book)
 
-        for b in cf_books:
-            if b != book_name and b not in books_list:
-                books_list.append(b)
-
-    elif user_id:
-        books_list = recommend_cf(user_id)
+    elif username or user_id:
+        books_list = recommend_cf(username=username, user_id=user_id)
 
     elif book_name:
         content_books = recommend(book_name)
-
         books_list = [book_name]
-        for b in content_books:
-            if b != book_name and b not in books_list:
-                books_list.append(b)
+        for book in content_books:
+            if book != book_name and book not in books_list:
+                books_list.append(book)
 
     else:
         books_list = list(popular_df["title"].head(6).values)
 
-    final_output = [get_book_info(book) for book in books_list[:6]]
-    return final_output
+    return [get_book_info(book) for book in books_list[:6]]

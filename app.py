@@ -1,7 +1,6 @@
-import random
 import streamlit as st
-from auth import login_user, register_user
-from main import hybrid_recommend, book_titles, user_ids
+from auth import get_user_ratings, login_user, register_user, save_rating
+from main import book_titles, hybrid_recommend
 import os
 
 os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
@@ -191,6 +190,22 @@ if "user" in st.session_state:
 
     st.markdown('<div class="sub-title">🎯 Get Book Recommendations</div>', unsafe_allow_html=True)
 
+    st.markdown("### Build your recommendation profile")
+    rating_book = st.selectbox("Rate a book", [""] + book_titles, key="rating_book")
+    rating_value = st.slider("Your rating", min_value=1, max_value=10, value=8, key="rating_value")
+
+    if st.button("Save Rating"):
+        if not rating_book:
+            st.error("Please select a book to rate.")
+        else:
+            save_rating(st.session_state["user"], rating_book, rating_value)
+            st.success("Rating saved. Future personalized recommendations will use it.")
+            st.rerun()
+
+    saved_ratings = get_user_ratings(st.session_state["user"])
+    if saved_ratings:
+        st.caption(f"Your profile contains {len(saved_ratings)} saved rating(s).")
+
     option = st.selectbox(
         "Choose Recommendation Type",
         ["Popular", "By Book Name", "Personalized", "Hybrid"]
@@ -200,9 +215,7 @@ if "user" in st.session_state:
 
     result = None
     reason = ""
-
     if st.button("Recommend"):
-        uid = random.choice(user_ids) if user_ids else None
         bname = book_name if book_name else None
 
         if option in ["By Book Name", "Hybrid"] and not bname:
@@ -218,12 +231,15 @@ if "user" in st.session_state:
             reason = f"🔎 First showing your selected book, then books similar to '{bname}'"
 
         elif option == "Personalized":
-            result = hybrid_recommend(user_id=uid)
-            reason = "👤 Based on users with similar reading interests"
+            result = hybrid_recommend(username=st.session_state["user"])
+            reason = "👤 Based on users with similar reading interests and your saved ratings"
 
         elif option == "Hybrid":
-            result = hybrid_recommend(user_id=uid, book_name=bname)
-            reason = "⚡ First showing your selected book, then a mix of similar and personalized recommendations"
+            result = hybrid_recommend(
+                username=st.session_state["user"],
+                book_name=bname,
+            )
+            reason = "⚡ Selected-book similarity combined with live personalized recommendations"
 
         if not result:
             st.error("No recommendations found.")
